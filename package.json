@@ -15,7 +15,8 @@
   },
   "dependencies": {
     "express": "^5.2.1",
-    "express-ws": "^5.0.2"
+    "express-ws": "^5.0.2",
+    "yarn": "^1.22.22"
   },
   "bugs": {
     "url": "https://github.com/render-examples/express-hello-world/issues"
