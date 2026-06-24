@@ -9,16 +9,76 @@
         display: flex;
         flex-direction: column;
         height: 100vh;
+        max-width: 720px;
+        margin: 0 auto;
+        font-family: system-ui, sans-serif;
       }
       .messages {
         flex: 1;
         overflow-y: auto;
         list-style: none;
-        padding: 0;
+        padding: 16px;
         margin: 0;
+      }
+      .messages li {
+        margin-bottom: 8px;
+        overflow-wrap: anywhere;
+      }
+      .message {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+      }
+      .messages .system {
+        color: #666;
+        font-size: 0.9rem;
+        text-align: center;
+      }
+      .avatar {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        flex: 0 0 28px;
+        border-radius: 50%;
+        color: white;
+        font-size: 0.8rem;
+        font-weight: 700;
+      }
+      .message-body {
+        min-width: 0;
+      }
+      .username {
+        display: block;
+        font-weight: 700;
+        line-height: 1.2;
       }
       .form {
         display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px;
+        border-top: 1px solid #ddd;
+      }
+      .palette {
+        display: none;
+        flex: 1;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .palette.is-active {
+        display: flex;
+      }
+      .swatch {
+        width: 36px;
+        height: 36px;
+        border: 2px solid transparent;
+        border-radius: 50%;
+        cursor: pointer;
+      }
+      .swatch.is-selected {
+        border-color: #111;
       }
       .input {
         flex: 1;
@@ -37,8 +97,9 @@
     <div class="chat">
       <ul class="messages"></ul>
       <form class="form">
-        <input class="input" autocomplete="off" />
-        <button class="submit">Send</button>
+        <input class="input" autocomplete="name" maxlength="20" placeholder="ユーザ名" />
+        <div class="palette" aria-label="パーソナルカラー"></div>
+        <button class="submit">参加</button>
       </form>
     </div>
 
@@ -46,24 +107,108 @@
       function main() {
         const host = location.origin.replace(/^http/, 'ws')
         const ws = new WebSocket(host + '/ws')
-        const myId = self.crypto.randomUUID().substr
+        const colors = ['#2563eb', '#16a34a', '#dc2626', '#9333ea', '#ea580c', '#0891b2']
+        let stage = 'name'
+        let joined = false
+        let username = ''
+        let color = colors[0]
         const form = document.querySelector('.form')
+        const input = document.querySelector('.input')
+        const palette = document.querySelector('.palette')
+        const submit = document.querySelector('.submit')
+
+        colors.forEach(function (value) {
+          const swatch = document.createElement('button')
+          swatch.type = 'button'
+          swatch.className = 'swatch'
+          swatch.style.backgroundColor = value
+          swatch.setAttribute('aria-label', value + ' を選択')
+
+          if (value === color) {
+            swatch.classList.add('is-selected')
+          }
+
+          swatch.onclick = function () {
+            color = value
+            document.querySelectorAll('.swatch').forEach(function (button) {
+              button.classList.toggle('is-selected', button === swatch)
+            })
+          }
+
+          palette.appendChild(swatch)
+        })
 
         form.onsubmit = function (e) {
           e.preventDefault()
-          const input = document.querySelector('.input')
-          const text = input.value
-          ws.send(myId + ':' +text)
+          const value = input.value.trim()
+
+          if (stage === 'name') {
+            if (!value) {
+              return
+            }
+            username = value
+            stage = 'color'
+            input.value = ''
+            input.style.display = 'none'
+            palette.classList.add('is-active')
+            submit.textContent = 'この色で参加'
+            return
+          }
+
+          if (stage === 'color') {
+            joined = true
+            stage = 'message'
+            ws.send(JSON.stringify({ type: 'join', username, color }))
+            palette.classList.remove('is-active')
+            input.style.display = ''
+            input.placeholder = 'メッセージ'
+            input.autocomplete = 'off'
+            input.removeAttribute('maxlength')
+            submit.textContent = 'Send'
+            input.focus()
+            return
+          }
+
+          if (!value || !joined) {
+            return
+          }
+
+          ws.send(JSON.stringify({ type: 'message', text: value }))
           input.value = ''
           input.focus()
         }
 
         ws.onmessage = function (msg) {
-          const response = msg.data
+          const response = JSON.parse(msg.data)
           const messageList = document.querySelector('.messages')
           const li = document.createElement('li')
-          li.textContent = response
+
+          if (response.type === 'system') {
+            li.className = 'system'
+            li.textContent = response.text
+          } else {
+            li.className = 'message'
+            const avatar = document.createElement('span')
+            const body = document.createElement('span')
+            const name = document.createElement('span')
+            const text = document.createElement('span')
+
+            avatar.className = 'avatar'
+            avatar.style.backgroundColor = response.color
+            avatar.textContent = response.username.charAt(0)
+            body.className = 'message-body'
+            name.className = 'username'
+            name.textContent = response.username
+            text.textContent = response.text
+
+            body.appendChild(name)
+            body.appendChild(text)
+            li.appendChild(avatar)
+            li.appendChild(body)
+          }
+
           messageList.appendChild(li)
+          messageList.scrollTop = messageList.scrollHeight
         }
 
         ws.onerror = function (error) {
